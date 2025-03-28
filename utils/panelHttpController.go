@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -14,7 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// 从环境变量获取面板apitoken
+// Get API token from environment variables
 var (
 	ApiToken  string
 	BaseURL   string
@@ -45,15 +46,15 @@ func GetBaseURL() string {
 	return BaseURL
 }
 
-// aaPanel API controller
+// BTPanel aaPanel API controller
 type BTPanel struct {
-    BaseURL  string // aaPanel address
-    APIToken string // aaPanel API token
+	BaseURL  string // aaPanel address
+	APIToken string // aaPanel API token
 }
 
-// NewBTPanel 创建新的宝塔面板控制器
+// NewBTPanel creates new aaPanel controller
 func NewBTPanel(baseURL string, apiToken string) *BTPanel {
-	// 确保URL以/结尾
+	// Ensure URL ends with /
 	if !strings.HasSuffix(baseURL, "/") {
 		baseURL = baseURL + "/"
 	}
@@ -63,25 +64,25 @@ func NewBTPanel(baseURL string, apiToken string) *BTPanel {
 	}
 }
 
-// md5Sum 辅助函数计算MD5
+// md5Sum helper function to calculate MD5
 func md5Sum(text string) string {
 	hash := md5.New()
 	hash.Write([]byte(text))
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-// Request 向宝塔面板发送API请求
+// Request sends API request to aaPanel
 func (bt *BTPanel) Request(path string, params map[string]string) (*mcp.CallToolResult, error) {
-	// 确保路径格式正确
+	// Ensure correct path format
 	path = strings.TrimPrefix(path, "/")
-	// 构建完整URL
+	// Build full URL
 	fullURL := fmt.Sprintf("%s%s?request_time=%s&request_token=%s", bt.BaseURL, path, Timestamp, ApiToken)
-	// 如果path中包含?，则后面的request_time拼接从&开始
+	// If path contains ?, append request_time with &
 	if strings.Contains(path, "?") {
 		fullURL = fmt.Sprintf("%s%s&request_time=%s&request_token=%s", bt.BaseURL, path, Timestamp, ApiToken)
 	}
 
-	// 构建请求参数
+	// Build request parameters
 	formData := strings.Builder{}
 	first := true
 	for key, value := range params {
@@ -94,29 +95,36 @@ func (bt *BTPanel) Request(path string, params map[string]string) (*mcp.CallTool
 		first = false
 	}
 
-	// 创建POST请求
+	// Create POST request
 	req, err := http.NewRequest("POST", fullURL, strings.NewReader(formData.String()))
 	if err != nil {
 		return nil, err
 	}
 
-	// 设置请求头
+	// Set request headers
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	// 执行请求
-	client := &http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // Skip TLS verification
+	}
+
+	// Execute request
+	client := &http.Client{
+		Transport: tr,
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	// 读取响应内容
+	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	// 返回响应内容
+	// Return response content
 	return mcp.NewToolResultText(string(body)), nil
 }
